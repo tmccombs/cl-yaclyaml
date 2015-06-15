@@ -78,46 +78,62 @@
 			       (gethash subnode initialization-callbacks))))))
       result)))
 
+(defun map-converted-mapping-nodes (content fn)
+  (declare (type (function (t t) t) fn))
+  (iter (for (key . val) in (cdr content)) ; CAR of content is :MAPPING keyword
+        (multiple-value-bind (conv-key got-key) (gethash key converted-nodes)
+          (multiple-value-bind (conv-val got-val) (gethash val converted-nodes)
+            ;; LET blocks here are extremely important, since they result in
+            ;; LAMBDAs capturing current values of KEY and VAL and not the
+            ;; ones they have upon last iteration.
+            ;; ENCAP- stands for "encaptured"
+            (if got-key
+                (if got-val
+                    (funcall fn conv-key conv-val)
+                    (push (let ((encap-key conv-key)
+                                (encap-val val))
+                            (lambda ()
+                              (funcall fn encap-key
+                                       (gethash encap-val converted-nodes))))
+                          (gethash val initialization-callbacks)))
+                (if got-val
+                    (push (let ((encap-key key)
+                                (encap-val conv-val))
+                            (lambda ()
+                              (funcall fn (gethash encap-key converted-nodes)
+                                       encap-val)))
+                          (gethash key initialization-callbacks))
+                    (let (key-installed key-installed-p
+                          val-installed val-installed-p
+                          (encap-key key)
+                          (encap-val val))
+                      (flet ((frob-key ()
+                               (if val-installed-p
+                                   (funcall fn (gethash encap-key converted-nodes)
+                                            val-installed)
+                                   (progn
+                                     (setf key-installed (gethash encap-key converted-nodes))
+                                     (setf key-installed-p t))))
+                             (frob-val ()
+                               (if key-installed-p
+                                   (funcall fn key-installed
+                                            (gethash encap-val converted-nodes))
+                                   (progn
+                                     (setf val-installed (gethash encap-val converted-nodes))
+                                     (setf val-installed-p t)))))
+                        (push #'frob-key (gethash key initialization-callbacks))
+                        (push #'frob-val (gethash val initialization-callbacks))))))))))
+
+(defmacro do-mapping-nodes ((key val content) &body body)
+  "Execute body with the key and value for each key value pair in the mapping of
+CONTENT."
+  `(map-converted-mapping-nodes ,content (lambda (,key ,val)
+                                           ,@body)))
+
 (defun convert-mapping-to-hashtable (content)
   (let ((result (make-hash-table :test #'equal)))
-    (iter (for (key . val) in (cdr content)) ; CAR of content is :MAPPING keyword
-	  (multiple-value-bind (conv-key got-key) (gethash key converted-nodes)
-	    (multiple-value-bind (conv-val got-val) (gethash val converted-nodes)
-	      ;; LET blocks here are extremely important, since they result in
-	      ;; LAMBDAs capturing current values of KEY and VAL and not the
-	      ;; ones they have upon last iteration.
-	      ;; ENCAP- stands for "encaptured"
-	      (if got-key
-		  (if got-val
-		      (setf (gethash conv-key result) conv-val)
-		      (push (let ((encap-key conv-key)
-				  (encap-val val))
-			      (lambda ()
-				(setf (gethash encap-key result)
-				      (gethash encap-val converted-nodes))))
-			    (gethash val initialization-callbacks)))
-		  (if got-val
-		      (push (let ((encap-key got-key)
-				  (encap-val val))
-			      (lambda ()
-				(setf (gethash encap-key result)
-				      (gethash encap-val converted-nodes))))
-			    (gethash key initialization-callbacks))
-		      (let (key-installed
-			    val-installed
-			    (encap-key key)
-			    (encap-val val))
-			(flet ((frob-key ()
-				 (if val-installed
-				     (setf (gethash key-installed result) val-installed)
-				     (setf key-installed (gethash encap-key converted-nodes))))
-			       (frob-val ()
-				 (if key-installed
-				     (setf (gethash key-installed result) val-installed)
-				     (setf val-installed (gethash encap-val converted-nodes)))))
-			  (push #'frob-key (gethash key initialization-callbacks))
-			  (push #'frob-val (gethash val initialization-callbacks)))))
-		  ))))
+    (do-mapping-nodes (key val content)
+      (setf (gethash key result) val))
     result))
 
 (defmacro define-bang-convert (name converter-name)
