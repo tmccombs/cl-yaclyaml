@@ -11,4 +11,14 @@
   (:export #:yaclyaml-parse #:yy-parse
 	   #:ncompose-representation-graph #:construct #:yaml-load #:hash->assoc #:yaml-simple-load
 	   #:yaml-load-file #:define-yaml-config
-	   #:nserialize #:represent-node))
+           #:nserialize #:represent-node
+           ;; For custom schemas:
+           #:yaml-schema #:install-converters
+           #:yaml-schema-unspecific-mixin #:convert-non-specific-scalar
+           #:failsafe-schema #:json-schema #:core-schema
+           #:register-schema
+           ;; Conversion of parsed data
+           #:install-scalar-converter #:install-sequence-converter #:install-mapping-converter
+           #:convert-scalar #:convert-sequence #:convert-mapping
+           #:convert-sequence-to-list #:convert-mappint-to-hashtable
+           #:do-mapping-nodes))
